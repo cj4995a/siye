@@ -1,20 +1,18 @@
-from flask import Flask, jsonify
-import json
-import os
-
-app = Flask(__name__)
-
-ARQUIVO = "/tmp/status.json"
-
 @app.route("/api/dados")
 def dados():
 
-    if not os.path.exists(ARQUIVO):
+    consulta = supabase.table(
+        "dashboard_status"
+    ).select("*").execute()
 
-        return jsonify({
-            "Cajamar": {},
-            "PTSams": {}
-        })
+    retorno = {}
 
-    with open(ARQUIVO, "r", encoding="utf-8") as f:
-        return jsonify(json.load(f))
+    for linha in consulta.data:
+
+        retorno[linha["unidade"]] = {
+            "mensagem": linha["mensagem"],
+            "atualizado": linha["atualizado"],
+            "status": linha["status"]
+        }
+
+    return jsonify(retorno)
