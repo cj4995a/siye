@@ -1,0 +1,462 @@
+import os
+import json
+import requests
+import urllib3
+import datetime
+import glob
+from flask import Flask, render_template_string, send_from_directory
+
+# --- CONFIGURAÇÕES INICIAIS ---
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+app = Flask(__name__)
+PATH_JSON_MONITOR = "status_dash.json"
+PASTA_IMAGENS = r"C:\Users\BRMNA148\Desktop\Automacao\Imagem da TV"
+
+# --- LAYOUT HTML INTEGRADO COM TIMING BLINDADO ---
+HTML_LAYOUT = """
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+:root { 
+    --sams-blue: #0067a3; 
+    --sams-green: #69BE28; 
+    --bg-gradient: linear-gradient(135deg, #f0f4f8 0%, #d7e2eb 100%);
+    --card-bg: rgba(255, 255, 255, 0.95);
+}
+
+* { box-sizing: border-box; transition: all 0.3s ease; }
+
+body, html { 
+    margin: 0; padding: 0; 
+    height: 100vh; width: 100vw; 
+    font-family: 'Roboto', sans-serif; 
+    background: var(--bg-gradient);
+    color: #2d3748; 
+    overflow: hidden; 
+}
+
+.main-wrapper { display: flex; flex-direction: column; height: 100vh; }
+
+.header-top { 
+    background: #1a202c; 
+    color: white; 
+    padding: 12px 40px; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-bottom: 5px solid var(--sams-green);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    z-index: 10;
+}
+
+.header-top h1 { 
+    margin: 0; font-size: 1.6rem; font-weight: 900; 
+    letter-spacing: 2px; text-transform: uppercase;
+}
+
+.dashboard { 
+    flex: 1; 
+    display: flex; 
+    gap: 30px; 
+    padding: 25px 30px; 
+    align-items: stretch;
+}
+
+.unit-box { 
+    flex: 1; 
+    display: flex; 
+    flex-direction: column; 
+}
+
+.unit-head { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: baseline; 
+    margin-bottom: 15px; 
+}
+
+.unit-head h2 { 
+    color: var(--sams-blue); 
+    font-size: 2.8rem; 
+    margin: 0; 
+    font-weight: 900; 
+    letter-spacing: -1px;
+}
+
+.update { 
+    color: #718096; 
+    font-size: 0.9rem; 
+    font-weight: 700; 
+    background: rgba(0,0,0,0.05); 
+    padding: 4px 12px; 
+    border-radius: 8px;
+}
+
+.grid-cards { 
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    gap: 20px; 
+    flex: 1; 
+}
+
+.col-stack { 
+    display: flex; 
+    flex-direction: column; 
+    gap: 20px; 
+    height: 100%;
+}
+
+.card { 
+    background: var(--card-bg); 
+    border-radius: 20px; 
+    padding: 20px; 
+    border: 1px solid #ffffff;
+    box-shadow: 8px 8px 16px #cedbe7, -8px -8px 16px #ffffff;
+    display: flex; 
+    flex-direction: column; 
+    justify-content: space-between; 
+    flex: 1; 
+    position: relative;
+    overflow: hidden;
+}
+
+.card::before {
+    content: ''; position: absolute; left: 0; top: 20%; bottom: 20%;
+    width: 6px; background: var(--indicator-color); border-radius: 0 4px 4px 0;
+}
+
+.card-header { display: flex; justify-content: space-between; align-items: center; }
+.card-label { 
+    font-size: 0.75rem; 
+    font-weight: 900; 
+    color: #4a5568; 
+    text-transform: uppercase; 
+    white-space: nowrap; 
+}
+.card-perc { 
+    font-size: 0.85rem; font-weight: 900; color: var(--sams-blue); 
+    background: #e6f4ff; padding: 4px 10px; border-radius: 10px;
+}
+
+.card-val { 
+    font-size: 3.5rem; 
+    font-weight: 900; 
+    color: #1a202c; 
+    line-height: 1; 
+    letter-spacing: -2px;
+    margin-top: auto; 
+}
+
+.card-total { 
+    background: linear-gradient(135deg, var(--sams-blue) 0%, #004d7a 100%); 
+    border: none;
+}
+.card-total .card-label { color: rgba(255,255,255,0.8); }
+.card-total .card-val { color: white; font-size: 3.8rem; }
+.card-total .card-perc { background: var(--sams-green); color: white; }
+
+.footer { 
+    background: #1a202c; padding: 12px 40px; 
+    display: flex; justify-content: space-between; align-items: center; 
+    color: white; border-top: 5px solid var(--sams-green);
+}
+
+.location-info { font-weight: 900; font-size: 1rem; letter-spacing: 1px; }
+
+.clima-container { display: flex; gap: 12px; }
+.clima-pill { 
+    background: rgba(255,255,255,0.1); padding: 8px 16px; 
+    border-radius: 12px; font-weight: 700; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.1);
+}
+.clima-pill span { color: var(--sams-green); font-size: 0.7rem; text-transform: uppercase; margin-right: 5px; }
+
+#clock { font-size: 2.2rem; font-weight: 900; color: var(--sams-green); font-family: monospace; }
+
+#carousel-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; z-index: 9999; opacity: 0; pointer-events: none; transition: 1s; }
+#carousel-overlay.visible { opacity: 1; }
+#carousel-overlay img { width: 100%; height: 100%; object-fit: contain; }
+</style>
+</head>
+<body>
+    <div id="carousel-overlay"><img id="carousel-img" src=""></div>
+    <div class="main-wrapper" id="dash-content">
+        <header class="header-top"><h1>PCP | INFORMAÇÕES LOGÍSTICAS SAM'S CLUB</h1></header>
+        
+        <main class="dashboard">
+            {% for cd in ['Cajamar', 'PTSams'] %}
+            {% set d = extrair(cd, info) %}
+            <section class="unit-box">
+                <div class="unit-head">
+                    <h2>{{ cd.upper() }}</h2>
+                    <div class="update">🕒 {{ info[cd]['HORA'] }}</div>
+                </div>
+                <div class="grid-cards">
+                    <div class="col-stack">
+                        {% for c in d.col_esq %}
+                        <article class="card" style="--indicator-color: {{ c.cor }}">
+                            <div class="card-header">
+                                <span class="card-label">{{ c.titulo }}</span>
+                                <span class="card-perc">{{ c.perc }}</span>
+                            </div>
+                            <div class="card-val">{{ c.valor }}</div>
+                        </article>
+                        {% endfor %}
+                    </div>
+                    <div class="col-stack">
+                        {% for c in d.col_dir %}
+                        <article class="card" style="--indicator-color: {{ c.cor }}">
+                            <div class="card-header">
+                                <span class="card-label">{{ c.titulo }}</span>
+                                <span class="card-perc">{{ c.perc }}</span>
+                            </div>
+                            <div class="card-val">{{ c.valor }}</div>
+                        </article>
+                        {% endfor %}
+                        
+                        {% if d.total %}
+                        <article class="card card-total">
+                            <div class="card-header"><span class="card-label">TOTAL GERAL</span></div>
+                            <div class="card-val">{{ d.total }}</div>
+                        </article>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+            {% endfor %}
+        </main>
+
+        <footer class="footer">
+            <div class="location-info">📍 JORDANÉSIA, CAJAMAR</div>
+            <div class="clima-container">
+                <div class="clima-pill"><span>AGORA</span> {{ weather.agora_ico }} {{ weather.agora }}</div>
+                <div class="clima-pill"><span>HOJE</span> {{ weather.hoje_max }}</div>
+                <div class="clima-pill"><span>AMANHÃ</span> {{ weather.amanha_max }}</div>
+            </div>
+            <div id="clock">00:00:00</div>
+        </footer>
+    </div>
+
+    <script>
+        function updateClock() { document.getElementById('clock').innerText = new Date().toLocaleTimeString('pt-BR', { hour12: false }); }
+        setInterval(updateClock, 1000); updateClock();
+        
+        let imagens = []; 
+        let indexAtual = -1; // Garante que o primeiro estado sempre seja a Informação Principal
+
+        const tempoDashboard = 30000; // 30 segundos fixos e garantidos para os Dados Logísticos do PCP
+        const tempoImagem = 30000;    // 30 segundos fixos para CADA imagem que estiver na pasta
+
+        async function carregarEIniciar() {
+            try {
+                const r = await fetch('/lista_imagens'); 
+                imagens = await r.json();
+                
+                // Dispara o ciclo respeitando rigorosamente a ordem dos estados
+                executarCarrossel();
+            } catch(e) { 
+                setTimeout(() => window.location.reload(), 10000); 
+            }
+        }
+
+        function executarCarrossel() {
+            const overlay = document.getElementById('carousel-overlay');
+            
+            // Se a pasta estiver vazia, os dados do PCP ficam expostos por 30s e a página dá F5 para atualizar
+            if (imagens.length === 0) {
+                setTimeout(() => window.location.reload(), tempoDashboard);
+                return;
+            }
+
+            if (indexAtual === -1) {
+                // ESTADO OBRIGATÓRIO INICIAL: Exibe as Informações Principais
+                overlay.classList.remove('visible'); // Remove a cobertura preta/imagem
+                
+                // Move o indicador para a primeira imagem, mas só executará após os 30s de Dashboard completados
+                indexAtual = 0; 
+                setTimeout(executarCarrossel, tempoDashboard);
+            } 
+            else if (indexAtual < imagens.length) {
+                // ESTADO DE CARROSSEL: Exibe uma imagem da pasta por vez
+                overlay.classList.remove('visible'); 
+                
+                setTimeout(() => {
+                    document.getElementById('carousel-img').src = '/media/' + imagens[indexAtual];
+                    overlay.classList.add('visible'); // Cobre a tela com a imagem atual
+                    
+                    indexAtual++; // Prepara o ponteiro para a próxima imagem da lista
+                    setTimeout(executarCarrossel, tempoImagem); // Mantém a imagem atual por 30s
+                }, 800); // Pequeno atraso técnico para transição visual limpa
+            } 
+            else {
+                // FIM DO CICLO: Percorreu todas as fotos da pasta.
+                // Remove o overlay e imediatamente dá F5 para atualizar os dados logísticos do Python e recomeçar o ciclo com o Painel Principal
+                overlay.classList.remove('visible');
+                setTimeout(() => window.location.reload(), 800);
+            }
+        }
+
+        // Inicia o fluxo completo assim que o navegador renderiza o HTML
+        carregarEIniciar();
+    </script>
+</body>
+</html>
+"""
+
+# --- FUNÇÕES DE CLIMA ---
+def obter_icone_clima(condition_slug, nascer_do_sol, por_do_sol):
+    agora_hora = datetime.datetime.now().time()
+    try:
+        sol_nasce = datetime.datetime.strptime(nascer_do_sol, '%H:%M %p').time()
+        sol_põe = datetime.datetime.strptime(por_do_sol, '%H:%M %p').time()
+        is_day = sol_nasce <= agora_hora <= sol_põe
+    except:
+        is_day = True
+    mapa_icones = {
+        "clear": "☀️" , "cloud": "☁️", "cloudy_day": "☁️", "cloudy_night": "☁️",
+        "partly_cloudy_day": "🌤️", "partly_cloudy_night": "☁️🌙", "rain": "🌧️",
+        "shower": "🌦️", "storm": "⛈️", "fog": "🌫️", "wind": "💨",
+    }
+    return mapa_icones.get(condition_slug, "☀️")
+
+def buscar_clima():
+    try:
+        api_key = "7966f284"
+        lat, lon = -23.3642, -46.8525
+        url = f"https://api.hgbrasil.com/weather?key={api_key}&lat={lat}&lon={lon}"
+        r = requests.get(url, timeout=5, verify=False)
+        res = r.json()
+        if 'results' in res:
+            dados = res['results']
+            f = dados['forecast']
+            return {
+                "agora": f"{dados.get('temp', '--')}º",
+                "agora_ico": obter_icone_clima(dados.get('condition_slug', 'none'), dados.get('sunrise'), dados.get('sunset')),
+                "hoje_max": f"{f[0]['max']}º",
+                "amanha_max": f"{f[1]['max']}º",
+            }
+    except: pass
+    return { "agora": "--º", "agora_ico": "❓", "hoje_max": "--", "amanha_max": "--" }
+
+# --- FUNÇÕES DE DADOS LOGÍSTICOS ---
+def buscar_dados_automacao():
+
+    try:
+
+        r = requests.get(
+            "https://SEU-PROJETO.vercel.app/api/dados",
+            timeout=10
+        )
+
+        dados = r.json()
+
+        return {
+            "Cajamar": {
+                "STATUS": dados.get(
+                    "Cajamar",
+                    {}
+                ).get(
+                    "mensagem",
+                    "Offline"
+                ),
+                "HORA": dados.get(
+                    "Cajamar",
+                    {}
+                ).get(
+                    "atualizado",
+                    "--:--"
+                )
+            },
+
+            "PTSams": {
+                "STATUS": dados.get(
+                    "PTSams",
+                    {}
+                ).get(
+                    "mensagem",
+                    "Offline"
+                ),
+                "HORA": dados.get(
+                    "PTSams",
+                    {}
+                ).get(
+                    "atualizado",
+                    "--:--"
+                )
+            }
+        }
+
+    except:
+
+        return {
+            "Cajamar": {
+                "STATUS": "Offline",
+                "HORA": "--:--"
+            },
+            "PTSams": {
+                "STATUS": "Offline",
+                "HORA": "--:--"
+            }
+        }
+def processar_exibicao(unidade, dados_json):
+    info = dados_json.get(unidade, {})
+    texto = info.get('STATUS', '')
+    esq, dir = [None, None, None], [None, None, None]
+    total_val = None
+    if not texto or "Offline" in texto: return {"col_esq": [], "col_dir": [], "total": None}
+    
+    linhas = texto.split('\n')
+    total_int = 1
+    for l in linhas:
+        if "TOTAL GERAL" in l.upper():
+            try: total_int = int("".join(filter(str.isdigit, l.split(':')[-1])))
+            except: pass
+            
+    for l in linhas:
+        if "🔸" in l and ":" in l:
+            try:
+                partes = l.replace('🔸', '').replace('*', '').split(':')
+                label = partes[0].strip().upper()
+                valor_int = int("".join(filter(str.isdigit, partes[1])))
+                perc = f"{(valor_int / total_int) * 100:.1f}%"
+                
+                cor = "#0067a3"
+                if "PENDENTE" in label: cor = "#f39c12"
+                elif any(x in label for x in ["SEPARADO", "CONFERIDA"]): cor = "#69BE28"
+                elif "CARREGAMENTO" in label: cor = "#3498db"
+                
+                card = {"titulo": label, "valor": f"{valor_int:,}".replace(',', '.'), "perc": perc, "cor": cor}
+                
+                if "PENDENTE ESTOQUE" in label: esq[0] = card
+                elif "PENDENTE CROSS" in label: dir[0] = card
+                elif "SEPARAÇÃO ESTOQUE" in label: esq[1] = card
+                elif "SEPARAÇÃO CROSS" in label: dir[1] = card
+                elif "SEPARADO" in label and "CROSS" not in label and "ESTOQUE" not in label: esq[2] = card
+                elif "CARREGAMENTO" in label: dir[2] = card
+            except: continue
+        elif "TOTAL GERAL" in l.upper():
+            total_val = f"{total_int:,}".replace(',', '.')
+            
+    return {"col_esq": [c for c in esq if c], "col_dir": [c for c in dir if c], "total": total_val}
+
+# --- ROTAS ---
+@app.route('/')
+def home():
+    return render_template_string(HTML_LAYOUT, info=buscar_dados_automacao(), weather=buscar_clima(), extrair=processar_exibicao)
+
+@app.route('/lista_imagens')
+def lista_imagens():
+    arquivos = []
+    for ext in ['*.jpg', '*.jpeg', '*.png', '*.gif']:
+        for f in glob.glob(os.path.join(PASTA_IMAGENS, ext)):
+            arquivos.append(os.path.basename(f))
+    return json.dumps(arquivos)
+
+@app.route('/media/<path:filename>')
+def serve_media(filename):
+    return send_from_directory(PASTA_IMAGENS, filename)
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5051)
