@@ -1,30 +1,25 @@
 from flask import Flask, request, jsonify
-import json
-import os
+from supabase import create_client
 
 app = Flask(__name__)
 
-ARQUIVO = "/tmp/status.json"
+supabase = create_client(
+SUPABASE_URL=https://qjugsyqxipscyrwxwbjo.supabase.co
+SUPABASE_KEY=sb_publishable_mp4-U77QppB_RYk91FPf4g_ecBWd3sA
+)
 
 @app.route("/api/status", methods=["POST"])
-def atualizar():
+def status():
 
     dados = request.json
 
-    status = {}
-
-    if os.path.exists(ARQUIVO):
-        with open(ARQUIVO, "r", encoding="utf-8") as f:
-            status = json.load(f)
-
-    status[dados["unidade"]] = dados
-
-    with open(ARQUIVO, "w", encoding="utf-8") as f:
-        json.dump(
-            status,
-            f,
-            ensure_ascii=False,
-            indent=4
-        )
+    supabase.table(
+        "dashboard_status"
+    ).upsert({
+        "unidade": dados["unidade"],
+        "mensagem": dados["mensagem"],
+        "atualizado": dados["atualizado"],
+        "status": dados["status"]
+    }).execute()
 
     return jsonify({"ok": True})
