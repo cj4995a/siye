@@ -1,18 +1,35 @@
-@app.route("/api/dados")
-def dados():
+from http.server import BaseHTTPRequestHandler
+import json
 
-    consulta = supabase.table(
-        "dashboard_status"
-    ).select("*").execute()
+# memória temporária (simples)
+DATA_STORE = {}
 
-    retorno = {}
+class handler(BaseHTTPRequestHandler):
 
-    for linha in consulta.data:
+    def do_POST(self):
+        global DATA_STORE
 
-        retorno[linha["unidade"]] = {
-            "mensagem": linha["mensagem"],
-            "atualizado": linha["atualizado"],
-            "status": linha["status"]
-        }
+        content_length = int(self.headers['Content-Length'])
+        body = self.rfile.read(content_length)
 
-    return jsonify(retorno)
+        try:
+            DATA_STORE = json.loads(body.decode("utf-8"))
+
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+
+            self.wfile.write(json.dumps({"status": "ok"}).encode())
+
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(str(e).encode())
+
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "application/json")
+        self.end_headers()
+
+        self.wfile.write(json.dumps(DATA_STORE).encode())
